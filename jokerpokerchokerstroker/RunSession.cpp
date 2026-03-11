@@ -1,0 +1,161 @@
+#include <iostream>
+#include <algorithm>
+#include "RunSession.h"
+#include "Deck.h"
+#include "Card.h"
+#include "hand.h"
+#include "ScoringSystem.h"
+#include "GameState.h"
+#include "ModifierFactory.h"
+#include "ShopSystem.h"
+#include "InputGeneration.h"
+using namespace std;
+vector<int> blinds = {100, 250, 600};
+vector<string> blindNames = {"Small Blind", "Big Blind", "Boss Blind"};
+Hand selectCards(Hand &hand)
+{
+
+    int amount = InputGeneration::askCardAmount(hand.size());
+
+    if (amount <= 0)
+        amount = 1;
+    if (amount > hand.size())
+        amount = hand.size();
+
+    Hand played;
+
+    vector<int> indexes = InputGeneration::askIndexes(amount,hand.size());
+
+    for (int index : indexes)
+        played.addCard(hand.getCards()[index]);
+
+    sort(indexes.begin(), indexes.end(), greater<int>());
+
+    for (int index : indexes)
+        hand.removeCard(index);
+
+    return played;
+}
+void discardCards(Hand &hand, Deck &deck)
+{
+    int amount = InputGeneration::askDiscardAmount(hand.size());
+
+    if (amount <= 0)
+        return;
+
+    if (amount > hand.size())
+        amount = hand.size();
+
+    vector<int> indexes = InputGeneration::askIndexes(amount, hand.size());
+
+    sort(indexes.begin(), indexes.end(), greater<int>());
+
+    for (int index : indexes)
+        hand.removeCard(index);
+
+    while (hand.size() < 8)
+        hand.addCard(deck.draw());
+}
+void drawUpTo(Hand &hand, Deck &deck, int targetSize)
+{
+    while (hand.size() < targetSize)
+    {
+        hand.addCard(deck.draw());
+    }
+}
+void runSession()
+{
+    GameState game;
+    game.money = 5;
+
+    game.deck.shuffle();
+
+    // starting hand
+    for (int i = 0; i < 8; i++)
+        game.hand.addCard(game.deck.draw());
+
+    for (int b = 0; b < blinds.size(); b++)
+    {
+        int target = blinds[b];
+        int roundScore = 0;
+
+        game.handsRemaining = 3;
+        game.discardsRemaining = 3;
+
+        cout << "\n====================\n";
+        cout << blindNames[b] << endl;
+        cout << "Target Score: " << target << endl;
+        cout << "====================\n";
+
+        while (game.handsRemaining > 0 && roundScore < target)
+        {
+            cout << "\nCurrent Score: " << roundScore << "/" << target << endl;
+
+            cout << "\nYour hand:\n";
+            game.hand.print();
+
+            cout << "\nHands: " << game.handsRemaining
+                 << "  Discards: " << game.discardsRemaining << endl;
+
+
+            int choice = InputGeneration::askAction();
+
+            if (choice == 1)
+            {
+                Hand played = selectCards(game.hand);
+
+                Score score = ScoringSystem::evaluateHand(played);
+
+                for (auto t : game.tokers)
+                {
+                    t->apply(score);
+                }
+                int finalScore = score.chips * score.mult;
+
+                roundScore += finalScore;
+
+                cout << "Played: ";
+                played.print();
+
+                cout << "Hand: " << score.handName << endl;
+                cout << "Chips: " << score.chips
+                     << "  Mult: " << score.mult << endl;
+
+                cout << "Score: " << finalScore << endl;
+
+                drawUpTo(game.hand, game.deck, 8);
+
+                game.handsRemaining--;
+            }
+
+            else if (choice == 2)
+            {
+                if (game.discardsRemaining <= 0)
+                {
+                    cout << "No discards left!\n";
+                    continue;
+                }
+
+                discardCards(game.hand, game.deck);
+                game.discardsRemaining--;
+            }
+        }
+
+        if (roundScore >= target)
+        {
+            cout << "\nBlind Cleared! You get 5 Dooller \n";
+            ShopSystem::openShop(game);
+        }
+        else
+        {
+            cout << "\nYou failed the blind.\n";
+            cout << "Game Over\n"; 
+            cout << "Final Dooller" << game.money << endl;
+            return;
+        }
+    }
+
+    cout << "\nYou cleared all blinds!\n";
+    cout << "Victory!\n";
+    cout << "Final Dooller" << game.money << endl;
+}
